@@ -196,16 +196,19 @@ entropy  <- function(x, nbreaks = nclass.Sturges(x)) {
 
 
 ##MODELIING 
+library(plyr)
+myData_Full$activity.x <- mapvalues(myData_Full$activity.x, 1:12, act_labels$X2)
+data_to_work_with <- myData_Full  %>% filter(n.x >100) %>% select( -c(1:3, sample.x, n.x)) %>% drop_na() %>% mutate(activity.x = factor(activity.x))
 
-data_to_work_with <- myData_Full%>% filter(n.x >100) %>% select( -c(1:3, sample.x, n.x)) %>% drop_na()
-
-model1 <- lm(activity.x~., data = dplyr::select(myData_Full, -epoch, -user_id, -exp_id,
-                                                -sample.x, -n.x))
-summary(model1)
-
-car::vif(model1)
+library(caret)
 
 
+
+
+Tcontrol <- trainControl(method = 'cv', number = 5,returnResamp = "all", classProbs = T)
+
+
+stepLDA <- train(activity.x ~ ., data = data_to_work_with, method = 'stepLDA',metric = 'ROC', trControl = Tcontrol, fold = 5, tuneGrid = expand.grid(direction = 'both', maxvar = 20))
 
 
 
