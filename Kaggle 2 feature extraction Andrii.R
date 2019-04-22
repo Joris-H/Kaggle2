@@ -20,19 +20,15 @@ expname =  gsub(".+exp(\\d+).+", "\\1", filename)
 # import the data from the file
 user01 <- read_delim(filename, " ", col_names = F)
 
-head(user01)
 
 #Each column is a signal. Subsequent rows are subsequent measurement samples, and 
 #so we treat rownumber as a time indicator (to keep the distinction clear we'll talk about 
 #sample number).
 #Let's have a look at the signal wave forms:
 
-plot.ts(user01, xlab="Sample number")
-
-labels[1:2,]
 
 
-findInterval(.4, c(0,.25,.5,1))
+
 
 user_labels <-  labels %>% 
   dplyr::filter(userid==as.numeric(username) & trial == as.numeric(expname)) %>% 
@@ -50,8 +46,6 @@ user <-  user01 %>%
   mutate(sample = row_number()-1) %>%
   mutate(activity_id = findInterval(sample, user_labels$vec)) %>%
   left_join(user_labels)
-
-user
 
 user %>% #drop_na() %>%
   ggplot(aes(sample, X1, col = factor(activity), group=segment)) + # first without 'segment', then solve issues
@@ -199,9 +193,9 @@ entropy  <- function(x, nbreaks = nclass.Sturges(x)) {
 
 
 ##MODELIING 
-library(plyr)
-myData_Full$activity.x <- mapvalues(myData_Full$activity.x, 1:12, act_labels$X2)
+myData_Full$activity.x <- plyr::mapvalues(myData_Full$activity.x, 1:12, act_labels$X2)
 data_to_work_with <- myData_Full  %>% filter(n.x >100) %>% select( -c(1:3, sample.x, n.x)) %>% drop_na() %>% mutate(activity.x = factor(activity.x))
+
 
 library(caret)
 library(MASS)
@@ -209,10 +203,10 @@ library(MASS)
 
 
 
-Tcontrol <- trainControl(method = 'cv', number = 5,returnResamp = "all", classProbs = T)
+#Tcontrol <- trainControl(method = 'cv', number = 5,returnResamp = "all", classProbs = T)
 
 
-stepLDA <- train(activity.x ~ ., data = data_to_work_with, method = 'stepLDA',metric = 'ROC', trControl = Tcontrol, fold = 5, tuneGrid = expand.grid(direction = 'both', maxvar = 20))
+#stepLDA <- train(activity.x ~ ., data = data_to_work_with, method = 'stepLDA',metric = 'ROC', trControl = Tcontrol, fold = 5, tuneGrid = expand.grid(direction = 'both', maxvar = 20))
 
 model1 <- lda(formula = activity.x ~ sd1.x + sd2.x + q1_25.x + q1_75.x + q2_75.x + skew1.x + skew2.x + 
       skew3.x + AR1.2.x + AR2.2.x + AR12.1.x + AR13.1.x + m3.y + 
@@ -293,8 +287,8 @@ myData_Full_test <- left_join(myData_Acc_test, myData_Gryo_test, by = c("epoch",
 myData_Full_test_predict <-  myData_Full_test %>% dplyr::select(-c(1:4))
 
 
-predictions <- predict.lda(model1, myData_Full_test_predict)
-lda.pred=predict (model1, myData_Full_test_predict)
+predictions <- predict(model1, myData_Full_test_predict)
+lda.pred=predict(model1, myData_Full_test_predict)
 lda.class=lda.pred$class
 
 
