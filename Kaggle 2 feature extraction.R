@@ -197,6 +197,8 @@ entropy  <- function(x, nbreaks = nclass.Sturges(x)) {
 
 ##MODELIING 
 
+data_to_work_with <- myData_Full%>% filter(n.x >100) %>% select( -c(1:3, sample.x, n.x)) %>% drop_na()
+
 model1 <- lm(activity.x~., data = dplyr::select(myData_Full, -epoch, -user_id, -exp_id,
                                                 -sample.x, -n.x))
 summary(model1)
