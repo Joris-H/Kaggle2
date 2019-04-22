@@ -1,10 +1,4 @@
-
-
-
-
-
-
-
+library(tidyverse)
 
 act_labels = read_delim("activity_labels.txt", " ", col_names=F, trim_ws = T) 
 act_labels = act_labels %>% select(X1,X2)
@@ -131,12 +125,25 @@ extractTimeDomainFeatures <-
         sample = sample[1],
         m1 = mean(X1), 
         m2 = mean(X2),
+        m3 = mean(X3),
         sd1 = sd(X1), 
+        sd2 = sd(X2),
+        sd3 = sd(X3),
         q1_25 = quantile(X1, .25),
+        q2_25 = quantile(X2, .25),
+        q3_25 = quantile(X3, .25),
+        q1_75 = quantile(X1, .75), 
+        q2_75 = quantile(X2, .75),
+        q3_75 = quantile(X3, .75),
         skew1 = e1071::skewness(X1),
-        AR1.1 = cor(X1, lag(X1), use = "pairwise"),
+        skew2 = e1071::skewness(X2),
+        skew3 = e1071::skewness(X3),
         AR1.2 = cor(X1, lag(X1, n = 2), use = "pairwise"),
+        AR2.2 = cor(X2, lag(X2, n = 2), use = "pairwise"),
+        AR3.2 = cor(X3, lag(X3, n = 2), use = "pairwise"),
         AR12.1 = cor(X1, lag(X2), use = "pairwise"),
+        AR23.1 = cor(X2, lag(X3), use = "pairwise"),
+        AR13.1 = cor(X1, lag(X3), use = "pairwise"),
         
         # ... your own features ... (to get inspired, look at the histograms above)
         n=n()
