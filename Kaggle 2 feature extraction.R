@@ -201,6 +201,7 @@ myData_Full$activity.x <- mapvalues(myData_Full$activity.x, 1:12, act_labels$X2)
 data_to_work_with <- myData_Full  %>% filter(n.x >100) %>% select( -c(1:3, sample.x, n.x)) %>% drop_na() %>% mutate(activity.x = factor(activity.x))
 
 library(caret)
+library(MASS)
 
 
 
@@ -210,6 +211,11 @@ Tcontrol <- trainControl(method = 'cv', number = 5,returnResamp = "all", classPr
 
 stepLDA <- train(activity.x ~ ., data = data_to_work_with, method = 'stepLDA',metric = 'ROC', trControl = Tcontrol, fold = 5, tuneGrid = expand.grid(direction = 'both', maxvar = 20))
 
+model1 <- lda(formula = activity.x ~ sd1.x + sd2.x + q1_25.x + q1_75.x + q2_75.x + skew1.x + skew2.x + 
+      skew3.x + AR1.2.x + AR2.2.x + AR12.1.x + AR13.1.x + m3.y + 
+      sd2.y + q1_25.y + q3_25.y + q1_75.y + skew2.y + AR1.2.y + 
+      AR2.2.y,
+    data = data_to_work_with)
 
 
 
