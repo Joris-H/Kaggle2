@@ -7,6 +7,7 @@ act_labels = read_delim("activity_labels.txt", " ", col_names=F, trim_ws = T)
 act_labels = act_labels %>% select(X1,X2)
 act_labels
 
+
 labels <- read_delim("RawData/Train/labels_train.txt", " ", col_names = F)
 colnames(labels) <- c('trial', 'userid', 'activity', 'start', 'end')
 labels
@@ -21,13 +22,55 @@ expname =  gsub(".+exp(\\d+).+", "\\1", filename)
 user01 <- read_delim(filename, " ", col_names = F)
 
 
+filename_gyr = "RawData/Train/gyro_exp01_user02.txt"
+username_gyr = gsub(".+user(\\d+).+", "\\1", filename_gyr)
+expname_gyr =  gsub(".+exp(\\d+).+", "\\1", filename_gyr)
+
+# import the data from the file
+user01_gyr <- read_delim(filename_gyr, " ", col_names = F)
+
+
 #Each column is a signal. Subsequent rows are subsequent measurement samples, and 
 #so we treat rownumber as a time indicator (to keep the distinction clear we'll talk about 
 #sample number).
 #Let's have a look at the signal wave forms:
 
+user_gyr <- 
+  user01_gyr %>% 
+  mutate(sample = row_number()-1) %>%
+  mutate(activity_id = findInterval(sample, user_labels$vec)) %>%
+  left_join(user_labels)
 
 
+walking <- filter(user_gyr, sample > 10000)
+
+
+user_gyr %>% #drop_na() %>%
+  ggplot(aes(sample, X3, col = factor(activity), group=segment)) + # first without 'segment', then solve issues
+  geom_line() 
+
+
+
+user <- 
+  user01 %>% 
+  mutate(sample = row_number()-1) %>%
+  mutate(activity_id = findInterval(sample, user_labels$vec)) %>%
+  left_join(user_labels)
+
+
+user %>%
+  ggplot(aes(X1)) + 
+  geom_histogram(bins=40, fill=1, alpha=0.5) + 
+  #geom_histogram(aes(X2), bins=40, fill = 2, alpha=0.5) + geom_histogram(aes(X3), bins=40, fill = 4, alpha=0.5) +
+  facet_wrap(~activity, scales = "free_y")
+
+
+walking <- filter(user, sample > 10000)
+
+
+user %>% #drop_na() %>%
+  ggplot(aes(sample, X3, col = factor(activity), group=segment)) + # first without 'segment', then solve issues
+  geom_line() 
 
 
 user_labels <-  labels %>% 
@@ -53,7 +96,7 @@ user %>% #drop_na() %>%
 #facet_wrap(~segment+activity, scales="free_x")
 
 
-user %>%
+user_gyr %>%
   ggplot(aes(X1)) + 
   geom_histogram(bins=40, fill=1, alpha=0.5) + 
   #geom_histogram(aes(X2), bins=40, fill = 2, alpha=0.5) + geom_histogram(aes(X3), bins=40, fill = 4, alpha=0.5) +
@@ -126,6 +169,7 @@ extractTimeDomainFeatures <-
         sd1 = sd(X1), 
         sd2 = sd(X2),
         sd3 = sd(X3),
+        avg_sd = mean(sd1 + sd2 + sd3),
         q1_25 = quantile(X1, .25),
         q2_25 = quantile(X2, .25),
         q3_25 = quantile(X3, .25),
@@ -141,7 +185,13 @@ extractTimeDomainFeatures <-
         AR12.1 = cor(X1, lag(X2), use = "pairwise"),
         AR23.1 = cor(X2, lag(X3), use = "pairwise"),
         AR13.1 = cor(X1, lag(X3), use = "pairwise"),
-        
+        max.1 = max(abs(X1)),
+        bim.1 = bimodality_coefficient(X1),
+        bim.2 = bimodality_coefficient(X2),
+        bim.3 = bimodality_coefficient(X3),
+        entropy.1 = entropy(X1), 
+        entropy.2 = entropy(X2), 
+        entropy.3 = entropy(X3), 
         # ... your own features ... (to get inspired, look at the histograms above)
         n=n()
       ) 
@@ -154,20 +204,21 @@ filenames_acc <- dir("RawData/Train/", "^acc", full.names = TRUE) # for demo onl
 myData_Acc =  filenames_acc %>%
   map_dfr(extractTimeDomainFeatures) # map_dfr runs `extractTimeDomainFeatures` on all elements in filenames and binds results row wise
 
-head(myData_Acc)
-
 
 filenames_gyro <- dir("RawData/Train/", "^gyr", full.names = TRUE) 
 
 myData_Gyro =  filenames_gyro %>%
   map_dfr(extractTimeDomainFeatures) # map_dfr runs `extractTimeDomainFeatures` on all elements in filenames and binds results row wise
 
-head(myData_Gyro)
 
 myData_Full <- left_join(myData_Acc, myData_Gyro, by = c("epoch", "user_id", "exp_id")) %>% 
         dplyr::select(-activity.y, -sample.y, -n.y) 
 
 myData_Full$activity.x <-  as.integer(myData_Full$activity.x)
+
+
+myData_Full <- myData_Full %>% mutate(mean_diff_1 = m1.x - lag(m1.x), mean_diff_2 = m2.x - lag(m2.x), mean_diff_3 = m3.x - lag(m3.x)) %>% filter(epoch != 0 )
+
 
 
 #SOME REMAINING ISSUES
@@ -190,24 +241,49 @@ entropy  <- function(x, nbreaks = nclass.Sturges(x)) {
   -sum(p[p>0] * log(p[p>0]))
 }
 
-
+entropy(user$X1)
 
 ##MODELIING 
 myData_Full$activity.x <- plyr::mapvalues(myData_Full$activity.x, 1:12, act_labels$X2)
-data_to_work_with <- myData_Full  %>% filter(n.x >100) %>% select( -c(1:3, sample.x, n.x)) %>% drop_na() %>% mutate(activity.x = factor(activity.x))
+data_to_work_with <- myData_Full  %>% filter(n.x >100) %>% dplyr::select( -c(1,3, sample.x, n.x)) %>% drop_na() %>% mutate(activity.x = factor(activity.x))
+
+slda <- train(activity.x ~ ., data = dplyr::select(data_to_work_with, -user_id, -avg_sd.x, -avg_sd.y, -m1.x, -m2.x, -q3_75.x,
+                                                   -q2_25.x, -m3.x, -q1_25.x, -sd1.y, -q1_25.y, -max.1.x),
+              method = "stepLDA",
+              trControl = trainControl(method = "cv"), 
+              improvement = 0.02)
+
+
+data_to_work_with_subset <- data_to_work_with %>% dplyr::select(user_id,activity.x, sd1.x, 
+                                                                q2_75.x, m1.y,AR3.2.x, m1.x, max.1.x,
+                                                                q1_25.y, max.1.x)
+
+
+
+data_to_work_with_subset1 <- data_to_work_with %>% dplyr::select(user_id,activity.x, avg_sd.x, avg_sd.y, skew1.x, skew1.y, skew2.x, skew2.x, 
+                                          skew2.y, skew2.y, entropy.1.x, entropy.2.x, entropy.2.x, 
+                                          entropy.1.y, entropy.2.y, entropy.3.y, skew1.x, skew2.x, 
+                                          skew3.x, skew1.y, skew2.y, skew3.y)
+
+
+
+lda.fit <- lda(activity.x ~ . ,data=train_set[,-c(1)])
+
+lda.pred=predict (lda.fit , test_set[,-c(1,2)])
+lda.class=lda.pred$class
+
+mean(lda.class == test_set$activity.x)
+
 
 
 library(caret)
 library(MASS)
 
 
-
-
 #Tcontrol <- trainControl(method = 'cv', number = 5,returnResamp = "all", classProbs = T)
 
 
 #stepLDA <- train(activity.x ~ ., data = data_to_work_with, method = 'stepLDA',metric = 'ROC', trControl = Tcontrol, fold = 5, tuneGrid = expand.grid(direction = 'both', maxvar = 20))
-
 model1 <- lda(formula = activity.x ~ sd1.x + sd2.x + q1_25.x + q1_75.x + q2_75.x + skew1.x + skew2.x + 
       skew3.x + AR1.2.x + AR2.2.x + AR12.1.x + AR13.1.x + m3.y + 
       sd2.y + q1_25.y + q3_25.y + q1_75.y + skew2.y + AR1.2.y + 
@@ -235,7 +311,7 @@ test_features <- function(filenames_acc_test) {
 
     
     user <-  user01_test %>% 
-      mutate(sample = row_number()-1)
+      mutate(sample = row_number()-1) 
     
     usertimedom <- 
       user %>%
@@ -251,6 +327,7 @@ test_features <- function(filenames_acc_test) {
         sd1 = sd(X1), 
         sd2 = sd(X2),
         sd3 = sd(X3),
+        avg_sd = mean(sd1 + sd2 + sd3),
         q1_25 = quantile(X1, .25),
         q2_25 = quantile(X2, .25),
         q3_25 = quantile(X3, .25),
@@ -266,30 +343,63 @@ test_features <- function(filenames_acc_test) {
         AR12.1 = cor(X1, lag(X2), use = "pairwise"),
         AR23.1 = cor(X2, lag(X3), use = "pairwise"),
         AR13.1 = cor(X1, lag(X3), use = "pairwise"),
-        
+        sum.1 = sum(X1),
+        sum.2 = sum(X2),
+        sum.3 = sum(X3),
+        max.1 = max(abs(X1)),
+        bim.1 = bimodality_coefficient(X1),
+        bim.2 = bimodality_coefficient(X2),
+        bim.3 = bimodality_coefficient(X3),
+        entropy.1 = entropy(X1), 
+        entropy.2 = entropy(X2), 
+        entropy.3 = entropy(X3), 
         # ... your own features ... (to get inspired, look at the histograms above)
         n=n()
       ) 
     usertimedom
 }
-     
+
+
+
 myData_Acc_test =  filenames_acc_test %>%
   map_dfr(test_features)
 
 myData_Gryo_test <- filenames_gyro_test %>%
   map_dfr(test_features)
 
-
-
 myData_Full_test <- left_join(myData_Acc_test, myData_Gryo_test, by = c("epoch", "user_id", "exp_id")) %>% 
   dplyr::select(-sample.y, -n.y, -n.x) 
 
-myData_Full_test_predict <-  myData_Full_test %>% dplyr::select(-c(1:4))
+myData_Full_test_predict <-  myData_Full_test %>% dplyr::select(sd1.x, 
+                                                                q2_75.x, m1.y,AR3.2.x, m1.x, max.1.x,
+                                                                q1_25.y, max.1.x)
 
 
-predictions <- predict(model1, myData_Full_test_predict)
-lda.pred=predict(model1, myData_Full_test_predict)
-lda.class=lda.pred$class
+predictions <- predict(lda.fit, myData_Full_test_predict)
+
+classes <- predictions$class
+
+
+myData <- tibble("user_id" = myData_Full_test$user_id,"sample" = myData_Full_test$sample.x, "exp_id" = myData_Full_test$exp_id, "activity" = classes )
+
+myData %>%
+  mutate(user_id = paste("user", user_id, sep=""), exp_id = paste("exp", exp_id, sep="")) %>%
+  unite(Id, user_id, exp_id, sample) %>%
+  dplyr::select(Id, Predicted = activity) %>%
+  write_csv("test_set_predictions.csv")
+
+file.show("test_set_predictions.csv")
+
+
+
+
+
+
+
+
+
+
+
 
 
 
