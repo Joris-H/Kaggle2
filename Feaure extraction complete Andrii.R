@@ -1,4 +1,5 @@
 library(tidyverse)
+library(modes)
 
 ##gettubg labels
 ##########################################################################################
@@ -124,7 +125,7 @@ myData_Full <- left_join(myData_Acc, myData_Gyro, by = c("epoch", "user_id", "ex
 myData_Full$activity.x <-  as.integer(myData_Full$activity.x)
 
 ##adding the mean differences to the data
-myData_Full <- myData_Full %>% mutate(mean_diff_1 = m1.x - lag(m1.x), mean_diff_2 = m2.x - lag(m2.x), mean_diff_3 = m3.x - lag(m3.x)) %>% filter(epoch != 0 )
+myData_Full 
 
 
 myData_Full$activity.x <- plyr::mapvalues(myData_Full$activity.x, 1:12, act_labels$X2)
@@ -163,6 +164,37 @@ train_set <- data_to_work_with_cv %>% filter(ids %in% train_index)
 '%ni%' <- Negate('%in%')
 test_set <- data_to_work_with_cv %>% filter(ids %ni% train_index)
 ##########################################################################################
+
+
+### PCA sets
+
+pca_train <- train_set %>% select(-c(1,2,3)) %>% prcomp(center = TRUE, scale = TRUE)
+
+pca_train_data <- data.frame(train_set$activity.x, pca_train$x) %>% as_tibble()
+
+pca_train_data_subset <- pca_train_data %>% select(1:11)
+
+
+pca_test_data <- test_set %>% select(-c(1:3)) %>% predict(pca_train, .) %>% as_tibble()
+
+pca_test_data_subset <- pca_test_data %>% select(1:10)
+
+### model on PCA
+library(caret)
+trC <- trainControl(method = 'repeatedcv', number = 10, repeats = 3, search = 'random')
+
+knn_model <- train(train_set.activity.x ~. , data = pca_train_data_subset, method = 'knn', tuneLength = 20)
+
+lda_model <- train(train_set.activity.x ~. , data = pca_train_data_subset, method = 'lda', tuneLength = 20)
+
+
+
+predictions_test_set <- predict(knn_model, pca_test_data_subset)
+predictions_test_set_lda <- predict(lda_model, pca_test_data_subset)
+
+
+
+confusionMatrix(test_set$activity.x, predictions_test_set_lda) 
 
 
 
@@ -216,9 +248,6 @@ test_features <- function(filenames_acc_test) {
       AR12.1 = cor(X1, lag(X2), use = "pairwise"),
       AR23.1 = cor(X2, lag(X3), use = "pairwise"),
       AR13.1 = cor(X1, lag(X3), use = "pairwise"),
-      sum.1 = sum(X1),
-      sum.2 = sum(X2),
-      sum.3 = sum(X3),
       max.1 = max(abs(X1)),
       bim.1 = bimodality_coefficient(X1),
       bim.2 = bimodality_coefficient(X2),
@@ -246,14 +275,41 @@ myData_Full_test <- left_join(myData_Acc_test, myData_Gryo_test, by = c("epoch",
   dplyr::select(-sample.y, -n.y, -n.x) 
 
 ##adding mean differences to the test data set
-myData_Full_test <- myData_Full_test %>% mutate(mean_diff_1 = m1.x - lag(m1.x), mean_diff_2 = m2.x - lag(m2.x), mean_diff_3 = m3.x - lag(m3.x)) %>% filter(epoch != 0 )
+myData_Full_test <- myData_Full_test 
+
+
+
+### model final using PCA
+
+model_data <- data_to_work_with %>% select(-1) 
+
+pca_model_data <- model_data %>% select(-activity.x) %>% prcomp(center = T, scale = T)
+
+
+data_to_model <- data.frame(model_data$activity.x, pca_model_data$x) %>% as_tibble() %>% select(1:11)
+
+trC <- trainControl(method = 'repeatedcv', number = 10, repeats = 3, search = 'random')
+
+qda <- train(model_data.activity.x ~. , data = data_to_model, method = 'qda', tuneLength = 20)
+
+myData_Full_test[410,22] <- myData_Full_test[409,22]
+
+data_to_predict <- predict(pca_model_data, myData_Full_test) %>% as_tibble()
+
+data_to_predict_subset <- data_to_predict %>% select(1:10)
+
+Activity <- predict(qda, data_to_predict_subset)
+
+myData_Full_test$activity <- Activity
+
+
 
 myData_Full_test %>%
   mutate(user_id = paste("user", user_id, sep=""), exp_id = paste("exp", exp_id, sep="")) %>%
   unite(Id, user_id, exp_id, sample.x) %>%
   dplyr::select(Id, Predicted = activity) %>%
-  write_csv("test_set_predictions.csv")
+  write_csv("test_set_predictions1.csv")
 
-file.show("test_set_predictions.csv")
+file.show("test_set_predictions1.csv")
 
 
